@@ -27,7 +27,8 @@ public class ImageAnalyser {
 	
 	public Point[] generateFeaturePoints()
 	{
-		return getCannyEdges();
+		Point[] edgePoints = getCannyEdges();
+		return createClusters(edgePoints, 32);
 	}
 	
 	private int clampX(int x)
@@ -253,11 +254,150 @@ public class ImageAnalyser {
 		
 		return points;
 	}
-
-	private LinkedList<LinkedList<Point>> clusterStep(Point[] points, Point[] centroids)
+	
+	private Point[] createClusters(Point[] points, int initialGap)
 	{
-		LinkedList<LinkedList<Point>> clusters = new LinkedList<LinkedList<Point>>();
+		int minx, maxx;
+		minx = points[0].x;
+		maxx = 0;
+		for (int i = 0; i < points.length; i++)
+		{
+			if (points[i].x < minx)
+				minx = points[i].x;
+			if (points[i].x > maxx)
+				maxx = points[i].x;
+		}
+		int miny, maxy;
+		miny = points[0].y;
+		maxy = 0;
+		for (int i = 0; i < points.length; i++)
+		{
+			if (points[i].y < miny)
+				miny = points[i].y;
+			if (points[i].y > maxy)
+				maxy = points[i].y;
+		}
+		int h = (maxx-minx) / initialGap;
+		int w = (maxy-miny) / initialGap;
+		int numClusters = w*h;
+		Point[] clusters = new Point[numClusters];
 		
+		{
+			int i = 0;
+			for (int x = 0; x < w; x++)
+			{
+				for (int y = 0; y < h; y++)
+				{
+					clusters[i] = new Point(x*initialGap, y*initialGap);
+					i++;
+				}
+			}
+		}
+		
+		//keep moving the cluster centroids till no more changes occur
+		boolean finished = false;
+		while (!finished)
+		{
+			Point[] newClusters = clusterStep(points, clusters);
+			finished = true;
+			for (int j = 0; j < clusters.length; j++)
+			{
+					if (!clusters[j].equals(newClusters[j]))
+						finished = false;
+			}
+			clusters = newClusters;
+		}
+		
+		//make sub-clusters, if necessary
+		ArrayList<Point> newPoints = new ArrayList<Point>();
+		//resolve clusterings, and subdivide for large groups
+		Dictionary<Point, LinkedList<Point>> clusterings = fillClusters(points, clusters);
+		for (int i = 0; i < clusters.length; i++)
+		{
+			int size = clusterings.get(clusters[i]).size();
+			if (size > 5 && initialGap/2 > 3)
+			{
+				Point[] subPoints = new Point[size];
+				clusterings.get(clusters[i]).toArray(subPoints);
+				Point[] subClusters = createClusters(subPoints, initialGap/w);
+				
+				for (int j = 0; j < subClusters.length; j++)
+					newPoints.add(subClusters[j]);
+			}
+			else if (size > 0)
+			{
+				//pick point closest to centroid
+				Point closest = null;
+				double minDis = 0;
+				LinkedList<Point> pl = clusterings.get(clusters[i]);
+				for (int k = 0; k < pl.size(); k++)
+				{
+					if (closest == null || clusters[i].distance(pl.get(k)) < minDis)
+					{
+						closest = pl.get(k);
+						minDis = clusters[i].distance(pl.get(k));
+					}
+				}
+				newPoints.add(closest);
+			}
+				
+		}
+		Point[] finalClusters = new Point[newPoints.size()];
+		newPoints.toArray(finalClusters);
+		return finalClusters;
+	}
+	
+
+	private Point[] clusterStep(Point[] points, Point[] centroids)
+	{
+		Point[] nextClusters = new Point[centroids.length];
+		
+		Dictionary<Point, LinkedList<Point>> clusters = fillClusters(points,
+				centroids);
+		
+		for (int i = 0; i < centroids.length; i++)
+		{
+			LinkedList<Point> cluster = clusters.get(centroids[i]);
+			Point c = new Point(0,0);
+			for (int j = 0; j < cluster.size(); j++)
+			{
+				Point p = cluster.get(j);
+				c.translate(p.x, p.y);
+			}
+			
+			if (cluster.size() > 0)
+				nextClusters[i] = new Point(c.x/cluster.size(), c.y/cluster.size());
+			else
+				nextClusters[i] = new Point(centroids[i]);
+		}
+
+		return nextClusters;
+	}
+
+	private Dictionary<Point, LinkedList<Point>> fillClusters(Point[] points, Point[] centroids) 
+	{
+		Dictionary<Point, LinkedList<Point>> clusters = new Hashtable<Point, LinkedList<Point>>();
+		for (int i = 0; i < centroids.length; i++)
+			clusters.put(centroids[i], new LinkedList<Point>());
+		
+		for (int i = 0; i < points.length; i++)
+		{
+			Point p = points[i];
+			Point closest = null;
+			double distance = 0;
+			
+			for (int j = 0; j < centroids.length; j++)
+			{
+				double d = p.distance(centroids[j]);
+				if (d < distance || closest == null)
+				{
+					closest = centroids[j];
+					distance = d;
+				}
+			}
+			
+			clusters.get(closest).add(p);
+		}
 		return clusters;
 	}
 }
