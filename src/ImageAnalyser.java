@@ -28,7 +28,8 @@ public class ImageAnalyser {
 	public Point[] generateFeaturePoints()
 	{
 		Point[] edgePoints = getCannyEdges();
-		return createClusters(edgePoints, 32);
+		//return edgePoints;
+		return createClusters(edgePoints, 150, 10);
 	}
 	
 	private int clampX(int x)
@@ -255,8 +256,39 @@ public class ImageAnalyser {
 		return points;
 	}
 	
-	private Point[] createClusters(Point[] points, int initialGap)
+	class ClusterIteration
 	{
+		public Point[] points;
+		public int numPoints;
+		
+		public ClusterIteration(Point[] points, int numPoints)
+		{
+			this.points = points;
+			this.numPoints = numPoints;
+		}
+	}
+	
+	private Point[] createClusters(Point[] points, int numPoints, int maxClusterSize)
+	{
+		Stack<ClusterIteration> stack = new Stack<ClusterIteration>();
+		ArrayList<Point> clusters = new ArrayList<Point>();
+		
+		stack.push(new ClusterIteration(points, numPoints));
+		
+		while (!stack.empty())
+		{
+			ClusterIteration it = stack.pop();
+			Point[] result = createClusterIteration(it.points, it.numPoints, stack, maxClusterSize);
+			for (int i = 0; i < result.length; i++)
+				clusters.add(result[i]);
+		}
+
+		Point[] combined = new Point[clusters.size()];
+		clusters.toArray(combined);
+		return combined;
+	}
+
+	private Point[] createClusterIteration(Point[] points, int numPoints, Stack<ClusterIteration> callStack, int maxClusterSize) {
 		int minx, maxx;
 		minx = points[0].x;
 		maxx = 0;
@@ -277,22 +309,9 @@ public class ImageAnalyser {
 			if (points[i].y > maxy)
 				maxy = points[i].y;
 		}
-		int h = (maxx-minx) / initialGap;
-		int w = (maxy-miny) / initialGap;
-		int numClusters = w*h;
-		Point[] clusters = new Point[numClusters];
-		
-		{
-			int i = 0;
-			for (int x = 0; x < w; x++)
-			{
-				for (int y = 0; y < h; y++)
-				{
-					clusters[i] = new Point(x*initialGap, y*initialGap);
-					i++;
-				}
-			}
-		}
+		int h = (maxx-minx);
+		int w = (maxy-miny);
+		Point[] clusters = dispersePoints(numPoints, h, w);
 		
 		//keep moving the cluster centroids till no more changes occur
 		boolean finished = false;
@@ -315,14 +334,13 @@ public class ImageAnalyser {
 		for (int i = 0; i < clusters.length; i++)
 		{
 			int size = clusterings.get(clusters[i]).size();
-			if (size > 5 && initialGap/2 > 3)
+			int subSize = (int)Math.sqrt(numPoints);
+			if (size > maxClusterSize && subSize > 1)
 			{
 				Point[] subPoints = new Point[size];
 				clusterings.get(clusters[i]).toArray(subPoints);
-				Point[] subClusters = createClusters(subPoints, initialGap/w);
 				
-				for (int j = 0; j < subClusters.length; j++)
-					newPoints.add(subClusters[j]);
+				callStack.add(new ClusterIteration(subPoints, subSize));
 			}
 			else if (size > 0)
 			{
@@ -345,6 +363,32 @@ public class ImageAnalyser {
 		Point[] finalClusters = new Point[newPoints.size()];
 		newPoints.toArray(finalClusters);
 		return finalClusters;
+	}
+
+	private Point[] dispersePoints(int numPoints, int h, int w)
+	{
+		double ratio = h/(double)w;
+		int sideP = (int)Math.sqrt(numPoints);
+		int xPoints = (int)(sideP / ratio);
+		if (xPoints == 0)
+			xPoints = 1;
+		int yPoints = (int)(numPoints / xPoints);
+		if (yPoints == 0)
+			yPoints = 1;
+		Point[] clusters = new Point[xPoints*yPoints];
+		int xSpacing = w / (int)xPoints;
+		int ySpacing = h / (int)yPoints;
+		int i = 0;
+		for (int x = 0; x < xPoints; x++)
+		{
+			for (int y = 0; y < yPoints; y++)
+			{
+				clusters[i] = new Point(xSpacing*x, ySpacing*y);
+				i++;
+			}
+		}
+		
+		return clusters;
 	}
 	
 
