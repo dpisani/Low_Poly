@@ -37,6 +37,15 @@ public class LowPoly extends JFrame{
 		setSize(image.getImage().getWidth()+w, image.getImage().getHeight()+h);
 		setLocationRelativeTo(null);
 		
-		surface.points = image.generateFeaturePoints();
+		//make triangulation
+		DelaunayTriangulator delaunay = new DelaunayTriangulator();
+		
+		Triangle[] triangles = delaunay.triangulate(image.generateFeaturePoints());
+		
+		//colour triangles
+		for (int i = 0; i < triangles.length; i++)
+			triangles[i].setColour(image.getColourAt(triangles[i].getCenter()));
+		
+		surface.triangles = triangles;
 	}
 }

@@ -25,9 +25,17 @@ public class ImageAnalyser {
 		return image;
 	}
 	
+	public Color getColourAt(Point p)
+	{
+		if (p.x >= 0 && p.y >= 0 && p.x <= image.getWidth() && p.y <= image.getHeight())
+			return new Color(image.getRGB(p.x, p.y));
+		else
+			return Color.black;
+	}
+	
 	public Point[] generateFeaturePoints()
 	{
-		Point[] edgePoints = getCannyEdges();
+		Point[] edgePoints = getCannyEdges(10);
 		//return edgePoints;
 		return createClusters(edgePoints, 150, 10);
 	}
@@ -54,9 +62,9 @@ public class ImageAnalyser {
 		return y;
 	}
 	
-	private Point[] getCannyEdges()
+	private Point[] getCannyEdges(double threshold)
 	{
-		return findEdges(smoothImage(), 10);
+		return findEdges(smoothImage(), threshold);
 	}
 	
 	private BufferedImage smoothImage()
