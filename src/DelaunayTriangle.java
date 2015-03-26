@@ -1,7 +1,6 @@
 import java.awt.Color;
 import java.awt.Point;
-import java.util.Collection;
-import java.util.LinkedList;
+import java.util.*;
 
 
 /**
@@ -31,8 +30,8 @@ public class DelaunayTriangle extends Triangle
 		
 		int polarity = u.x * v.y - u.y * v.x;
 		
-		//if cross product is positive then winding is clockwise
-		if (polarity > 0)
+		//if cross product is negative then winding is clockwise
+		if (polarity < 0)
 		{
 			//swap ordering
 			this.b = c;
@@ -41,12 +40,12 @@ public class DelaunayTriangle extends Triangle
 	}
 	
 	
-	private void registerNeighbour(DelaunayTriangle t) throws Exception
+	private void registerNeighbour(DelaunayTriangle t)
 	{
 		if (t == null)
 			return;
 		/* we wish to link up with the smallest eligible triangle
-		The main concern if for the leaf triangles to be linked correctly,
+		The main concern is for the leaf triangles to be linked correctly,
 		since neighbour connections are only used on leaves. */
 		
 		if (!isLeaf())
@@ -54,19 +53,18 @@ public class DelaunayTriangle extends Triangle
 			for (int i = 0; i < subTriangles.length; i++)
 			{
 				DelaunayTriangle child = subTriangles[i];
-				if (child.doesShareEdge(t))
+				if (child.sharesEdge(t))
 				{
 					child.registerNeighbour(t);
-					return;
+					//return;
 				}
 			}
 		}
 		
 		
-		if (!doesShareEdge(t))
+		if (!sharesEdge(t))
 			return;
 
-		//At this point we are either a leaf or the smallest triangle that shares a whole edge
 		
 		if (neighbours == null)
 			neighbours = new DelaunayTriangle[3];
@@ -74,7 +72,7 @@ public class DelaunayTriangle extends Triangle
 		//add a link, either by filling an empty slot or by replacing a large triangle by its child
 		for (int i = 0; i < 3; i++)
 		{
-			if (neighbours[i] == t || neighbours[i] == t.parent || neighbours[i] == null)
+			if (neighbours[i] == t || neighbours[i] == null || !neighbours[i].isLeaf())
 			{
 				neighbours[i] = t;
 				return;
@@ -83,7 +81,7 @@ public class DelaunayTriangle extends Triangle
 		}
 		
 		//we shouldn't ever get here
-		throw new Exception("Improperly linked triangle");
+		System.out.println("Oh no!: Problem registering " + toString() + " with " + t.toString());
 
 	}
 	
@@ -108,48 +106,8 @@ public class DelaunayTriangle extends Triangle
 		return determinant > 0;
 	}
 	
-	public boolean isInTriangle(Point p)
-	{
-		Point v0 = new Point(c.x-a.x, c.y-a.y);
-		Point v1 = new Point(b.x-a.x, b.y-a.y);
-		Point v2 = new Point(p.x-a.x, p.y-a.y);
-		
-		// Compute dot products
-		int dot00 = dot(v0, v0);
-		int dot01 = dot(v0, v1);
-		int dot02 = dot(v0, v2);
-		int dot11 = dot(v1, v1);
-		int dot12 = dot(v1, v2);
-		
-		// Compute barycentric coordinates
-		double invDenom = 1 / (double)(dot00 * dot11 - dot01 * dot01);
-		double u = (dot11 * dot02 - dot01 * dot12) * invDenom;
-		double v = (dot00 * dot12 - dot01 * dot02) * invDenom;
-
-		// Check if point is in triangle
-		return (u >= 0) && (v >= 0) && (u + v <= 1);
-	}
 	
-	private int dot (Point a, Point b)
-	{
-		return a.x*b.x + a.y+b.y;
-	}
-
-	public boolean doesShareEdge(Triangle t)
-	{
-		int pointsShared = 0;
-		
-		if (a == t.a || a == t.b || a == t.c)
-			pointsShared++;
-		if (b == t.a || b == t.b || b == t.c)
-			pointsShared++;
-		if (c == t.a || c == t.b || c == t.c)
-			pointsShared++;
-		
-		return pointsShared > 1;
-	}
-	
-	private boolean doesShareEdge(Triangle t, Point a, Point b)
+	private boolean sharesEdge(Triangle t, Point a, Point b)
 	{
 		int pointsShared = 0;
 		
@@ -170,7 +128,7 @@ public class DelaunayTriangle extends Triangle
 		{
 			if (neighbours[i] != null)
 			{
-				if (doesShareEdge(neighbours[i], a, b))
+				if (sharesEdge(neighbours[i], a, b))
 					return neighbours[i];
 			}
 		}
@@ -183,11 +141,16 @@ public class DelaunayTriangle extends Triangle
 		return subTriangles == null;
 	}
 	
+	public boolean isRoot()
+	{
+		return parent == null;
+	}
+	
 	public void registerChildrenTo(Collection<DelaunayTriangle> register)
 	{
 		if (subTriangles != null)
 		{
-			for (int i = 0; i < 3; i++)
+			for (int i = 0; i < subTriangles.length; i++)
 			{
 				if (subTriangles[i] != null)
 					register.add(subTriangles[i]);	
@@ -196,44 +159,59 @@ public class DelaunayTriangle extends Triangle
 	}
 	
 	/**
-	 * The main incremental step for performing a Delaunay triangulation.
-	 * Adds a point into the set and restores necessary invariants.
+	 * Part of the incremental step of the Delaunay triangulation.
+	 * Splits a triangle into smaller triangles who all share a vertex with a given point.
 	 * @param p The point to be added to the triangulation
+	 * @return The new triangles created by the split. Returns three points if the point was inside a triangle. Returns four if on an edge. Returns null if point was not inside the triangle.
 	 */
-	public void addPoint(Point p)
+	public DelaunayTriangle[] splitOnPoint(Point p)
 	{
-		if (!isInTriangle(p))
-			return;
+		//do edge checking
+		Point edgeA, edgeB, opposite;
+		edgeA = edgeB = opposite = null;
+
+		//check if the point lies on an edge
+		if (isOnEdge(a,b,p))
+		{
+			edgeA = a;
+			edgeB = b;
+			opposite = c;
+		}
+		else if (isOnEdge(a,c,p))
+		{
+			edgeA = a;
+			edgeB = c;
+			opposite = b;
+		}
+		else if (isOnEdge(c,b,p))
+		{
+			edgeA = c;
+			edgeB = b;
+			opposite = a;
+		}
+		
+		if (!isInTriangle(p) && edgeA == null)
+			return null;
 		
 		if (!isLeaf())
 		{
+			ArrayList<DelaunayTriangle> split = new ArrayList<DelaunayTriangle>();
 			for (int i = 0; i < subTriangles.length; i++)
-				subTriangles[i].addPoint(p);
+			{
+				DelaunayTriangle[] t = subTriangles[i].splitOnPoint(p);
+				if (t != null)
+				{
+					for (int j = 0; j < t.length; j++)
+						split.add(t[j]);
+				}
+			}
+			DelaunayTriangle[] result = new DelaunayTriangle[split.size()];
+			split.toArray(result);
+			return result;
 		}
 		else
 		{
-			//check if the point lies on an edge
-			Point edgeA, edgeB, opposite;
-			edgeA = edgeB = opposite = null;
 			
-			if (isOnEdge(a,b,p))
-			{
-				edgeA = a;
-				edgeB = b;
-				opposite = c;
-			}
-			else if (isOnEdge(a,c,p))
-			{
-				edgeA = a;
-				edgeB = c;
-				opposite = b;
-			}
-			else if (isOnEdge(c,b,p))
-			{
-				edgeA = c;
-				edgeB = b;
-				opposite = a;
-			}
 			
 			if (edgeA != null)
 			{
@@ -244,31 +222,38 @@ public class DelaunayTriangle extends Triangle
 				subTriangles = new DelaunayTriangle[2];
 				subTriangles[0] = ta;
 				subTriangles[1] = tb;
-				//link up with neighbours
-				try 
-				{
-					//ta neighbours
+				
+				if (ta.isColinear())
+					System.out.println("AAH!");
+				if (tb.isColinear())
+					System.out.println("AAH!");
+				
+				ta.parent = this;
+				tb.parent = this;
+				
+				//Link up with neighbours
+				//ta neighbours
+				if (getNeighbourOnEdge(edgeA, opposite) != null)
 					getNeighbourOnEdge(edgeA, opposite).registerNeighbour(ta);
-					if (getNeighbourOnEdge(edgeA, p) != null)
-						getNeighbourOnEdge(edgeA, p).registerNeighbour(ta);
-					
-					ta.registerNeighbour(getNeighbourOnEdge(edgeA, opposite));
-					ta.registerNeighbour(getNeighbourOnEdge(edgeA, p));
-					ta.registerNeighbour(tb);
-					
-					//tb neighbours
+				if (getNeighbourOnEdge(edgeA, p) != null)
+					getNeighbourOnEdge(edgeA, p).registerNeighbour(ta);
+				
+				ta.registerNeighbour(getNeighbourOnEdge(edgeA, opposite));
+				ta.registerNeighbour(getNeighbourOnEdge(edgeA, p));
+				ta.registerNeighbour(tb);
+				
+				//tb neighbours
+				if (getNeighbourOnEdge(edgeB, opposite) != null)
 					getNeighbourOnEdge(edgeB, opposite).registerNeighbour(tb);
-					if (getNeighbourOnEdge(edgeB, p) != null)
-						getNeighbourOnEdge(edgeB, p).registerNeighbour(tb);
-					
-					tb.registerNeighbour(getNeighbourOnEdge(edgeB, opposite));
-					tb.registerNeighbour(getNeighbourOnEdge(edgeB, p));
-					tb.registerNeighbour(ta);
-					
-				} catch (Exception e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+				if (getNeighbourOnEdge(edgeB, p) != null)
+					getNeighbourOnEdge(edgeB, p).registerNeighbour(tb);
+				
+				tb.registerNeighbour(getNeighbourOnEdge(edgeB, opposite));
+				tb.registerNeighbour(getNeighbourOnEdge(edgeB, p));
+				tb.registerNeighbour(ta);
+				
+				//TODO A dangerous move, consider copying the array
+				return subTriangles;
 			}
 			else
 			{
@@ -277,52 +262,51 @@ public class DelaunayTriangle extends Triangle
 				DelaunayTriangle tb = new DelaunayTriangle(a, c, p);
 				DelaunayTriangle tc = new DelaunayTriangle(c, b, p);
 				
+				if (ta.isColinear())
+					System.out.println("AAH!");
+				if (tb.isColinear())
+					System.out.println("AAH!");
+				if (tc.isColinear())
+					System.out.println("AAH!");
+				
+				ta.parent = this;
+				tb.parent = this;
+				tc.parent = this;
+				
 				subTriangles = new DelaunayTriangle[3];
 				subTriangles[0] = ta;
 				subTriangles[1] = tb;
 				subTriangles[2] = tc;
 				
-				//link up neighbours
-								
-				try 
-				{
-					//ta
-					if (getNeighbourOnEdge(a,b) != null)
-						getNeighbourOnEdge(a,b).registerNeighbour(ta);
-					tb.registerNeighbour(ta);
-					tc.registerNeighbour(ta);
-					
-					ta.registerNeighbour(getNeighbourOnEdge(a,b));
-					
-					//tb
-					if (getNeighbourOnEdge(a,c) != null)
-						getNeighbourOnEdge(a,c).registerNeighbour(tb);
-					ta.registerNeighbour(tb);
-					tc.registerNeighbour(tb);
-					
-					tb.registerNeighbour(getNeighbourOnEdge(a,c));
-					
-					//tc
-					if (getNeighbourOnEdge(c,b) != null)
-						getNeighbourOnEdge(c,b).registerNeighbour(tc);
-					tb.registerNeighbour(tc);
-					ta.registerNeighbour(tc);
-					
-					ta.registerNeighbour(getNeighbourOnEdge(c,b));
-					
-				} catch (Exception e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+				//Link with neighbours
+				//ta
+				if (getNeighbourOnEdge(a,b) != null)
+					getNeighbourOnEdge(a,b).registerNeighbour(ta);
+				tb.registerNeighbour(ta);
+				tc.registerNeighbour(ta);
+				
+				ta.registerNeighbour(getNeighbourOnEdge(a,b));
+				
+				//tb
+				if (getNeighbourOnEdge(a,c) != null)
+					getNeighbourOnEdge(a,c).registerNeighbour(tb);
+				ta.registerNeighbour(tb);
+				tc.registerNeighbour(tb);
+				
+				tb.registerNeighbour(getNeighbourOnEdge(a,c));
+				
+				//tc
+				if (getNeighbourOnEdge(c,b) != null)
+					getNeighbourOnEdge(c,b).registerNeighbour(tc);
+				tb.registerNeighbour(tc);
+				ta.registerNeighbour(tc);
+				
+				ta.registerNeighbour(getNeighbourOnEdge(c,b));
+				
+				//TODO A dangerous move, consider copying the array
+				return subTriangles;
 			}
 		}
 	}
-	
-	private boolean isOnEdge(Point a, Point b, Point p)
-	{
-		int asd = (p.x - a.x)*(p.x - a.x) + (p.y - a.y)*(p.y - a.y);
-		int bsd = (p.x - b.x)*(p.x - b.x) + (p.y - b.y)*(p.y - b.y);
-		
-		return asd == bsd;
-	}
+
 }

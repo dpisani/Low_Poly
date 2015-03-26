@@ -21,6 +21,11 @@ public class Surface extends JPanel {
 			g2d.setColor(triangles[i].getColour());
 			g2d.fillPolygon(triangles[i].getXPoints(), triangles[i].getYPoints(), 3);
 		}
+		
+		for (int j = 0; j < points.length; j++)
+		{
+			g2d.drawLine(points[j].x, points[j].y, points[j].x, points[j].y);
+		}
 	}
 	
 	@Override
@@ -31,4 +36,5 @@ public class Surface extends JPanel {
     }
 
 	public Triangle[] triangles;
+	public Point[] points;
 }

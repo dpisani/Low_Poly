@@ -27,7 +27,7 @@ public class ImageAnalyser {
 	
 	public Color getColourAt(Point p)
 	{
-		if (p.x >= 0 && p.y >= 0 && p.x <= image.getWidth() && p.y <= image.getHeight())
+		if (p.x >= 0 && p.y >= 0 && p.x < image.getWidth() && p.y < image.getHeight())
 			return new Color(image.getRGB(p.x, p.y));
 		else
 			return Color.black;
@@ -37,7 +37,7 @@ public class ImageAnalyser {
 	{
 		Point[] edgePoints = getCannyEdges(10);
 		//return edgePoints;
-		return createClusters(edgePoints, 150, 10);
+		return createClusters(edgePoints, 500, 20);
 	}
 	
 	private int clampX(int x)
@@ -451,5 +451,31 @@ public class ImageAnalyser {
 			clusters.get(closest).add(p);
 		}
 		return clusters;
+	}
+	
+	private double getPointDensity(Point[] points)
+	{
+		//get bounding box
+		int minx, maxx, miny, maxy;
+		minx = maxx = points[0].x;
+		miny = maxy = points[0].y;
+		
+		for (int i = 1; i < points.length; i++)
+		{
+			Point p = points[i];
+			
+			if (minx > p.x)
+				minx = p.x;
+			if (maxx < p.x)
+				maxx = p.x;
+			if (miny > p.y)
+				miny = p.y;
+			if (maxy < p.y)
+				maxy = p.y;
+		}
+		
+		int area = (maxx - minx) * (maxy - miny);
+		
+		return area / (double)points.length;
 	}
 }

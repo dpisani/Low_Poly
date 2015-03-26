@@ -1,24 +1,37 @@
 import java.awt.Point;
 import java.util.*;
 
-
 public class DelaunayTriangulator {
 	
-	public Triangle[] triangulate(Point[] points)
+	private DelaunayTriangle root;
+	
+	public DelaunayTriangulator(int width, int height)
 	{
-		DelaunayTriangle root = new DelaunayTriangle(new Point(0, 0), new Point(500, 0), new Point(500, 5000));
-		
+		root = new DelaunayTriangle(new Point(-width*3, -height), new Point(width*2, -height), new Point(width*3, height*3));
+		root.splitOnPoint(new Point(0,0));
+		root.splitOnPoint(new Point(width,0));
+		root.splitOnPoint(new Point(0,height));
+		root.splitOnPoint(new Point(width,height));
+	}
+	
+	public void addPoints(Point[] points)
+	{
 		for (int i = 0; i < points.length; i++)
-			root.addPoint(points[i]);
-		
-		LinkedList<Triangle> leaves = reportLeafTriangles(root);
+		{
+			insertPoint(points[i]);
+		}
+	}
+	
+	public Triangle[] getTriangulation()
+	{
+		LinkedList<Triangle> leaves = reportLeafTriangles();
 		Triangle[] triangulation = new Triangle[leaves.size()];
 		leaves.toArray(triangulation);
 		
 		return triangulation;
 	}
 	
-	private LinkedList<Triangle> reportLeafTriangles(DelaunayTriangle root)
+	private LinkedList<Triangle> reportLeafTriangles()
 	{
 		LinkedList<Triangle> discovered = new LinkedList<Triangle>();
 		
@@ -30,13 +43,18 @@ public class DelaunayTriangulator {
 		{
 			DelaunayTriangle t = unobserved.pop();
 			
-			if (t.isLeaf())
+			if (t.isLeaf() && !t.bordersTriangle(root))
 				discovered.add(t);
 			else
 				t.registerChildrenTo(unobserved);
 		}
 		
 		return discovered;
+	}
+	
+	private void insertPoint(Point p)
+	{
+		DelaunayTriangle[] split = root.splitOnPoint(p);
 	}
 
 }
